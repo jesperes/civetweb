@@ -375,6 +375,7 @@ struct pollfd {
 #include <sys/socket.h>
 #include <sys/poll.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <sys/time.h>
 #include <sys/utsname.h>
@@ -4978,6 +4979,7 @@ connect_socket(struct mg_context *ctx /* may be NULL */,
 	int ip_ver = 0;
 	*sock = INVALID_SOCKET;
 	memset(sa, 0, sizeof(*sa));
+        int on = 1;
 
 	if (ebuf_len > 0) {
 		*ebuf = 0;
@@ -5064,6 +5066,16 @@ connect_socket(struct mg_context *ctx /* may be NULL */,
 		            strerror(ERRNO));
 		return 0;
 	}
+
+        /* IAR fix: set TCP_NODELAY -jesper */
+        if (setsockopt(*sock, IPPROTO_TCP, TCP_NODELAY, (SOCK_OPT_TYPE)&on,
+                       sizeof(on)) != 0) {
+          mg_snprintf(NULL, NULL, ebuf, ebuf_len,
+                      "Failed to set TCP_NODELAY on socket: %s",
+                      strerror(ERRNO));
+          *sock = INVALID_SOCKET;
+          return 1;
+        }
 
 	set_close_on_exec(*sock, fc(ctx));
 
@@ -8984,6 +8996,16 @@ static int set_ports_option(struct mg_context *ctx)
 			mg_cry(fc(ctx), "cannot create socket (entry %i)", portsTotal);
 			continue;
 		}
+
+                /* IAR fix: set TCP_NODELAY -jesper */
+                if (setsockopt(so.sock,
+                               IPPROTO_TCP,
+                               TCP_NODELAY,
+                               (SOCK_OPT_TYPE)&on,
+                               sizeof(on)) != 0) {
+			mg_cry(fc(ctx),
+			       "cannot set socket option TCP_NODELAY");
+                }
 
 #ifdef _WIN32
 		/* Windows SO_REUSEADDR lets many procs binds to a
